@@ -49,7 +49,7 @@ protected:
 	void        updateScene();
 	void        renderImage();
 
-    // pick points
+    // 鼠标在图像中选点操作
     void    mousePressEvent(QMouseEvent* event);
 
 private:

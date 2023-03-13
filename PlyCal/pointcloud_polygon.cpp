@@ -13,7 +13,6 @@
   ******************************************************************************
   */
 
-/* Includes ------------------------------------------------------------------*/
 #include "pointcloud_polygon.h"
 
 #include <cmath>
@@ -30,23 +29,6 @@
 
 using namespace lqh;
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-//#define NODEBUG
-
-/* Private variables ---------------------------------------------------------*/
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-
-/* Exported functions --------------------------------------------------------*/
-
-/**
-  * @brief
-  * @param
-  * @note
-  * @return None
-  */
 PointcloudPolygon::PointcloudPolygon(const nlohmann::json& js, uint8_t size):
 	size_(size), polygon_(nullptr)
 {
@@ -55,6 +37,7 @@ PointcloudPolygon::PointcloudPolygon(const nlohmann::json& js, uint8_t size):
 	filter_angle_size_ 	= js["filter"]["angle_size"].get<double>();
 	filter_distance_  	= js["filter"]["distance"].get<double>();
 	filter_floor_gap_ 	= js["filter"]["floor_gap"].get<double>();
+	use_angle_filter_   = js["filter"]["use_angle_filter"].get<uint32_t>();
 	plane_point_num_min_ 		= js["plane"]["point_num_min"].get<uint32_t>();
 	plane_distance_threshold_ 	= js["plane"]["distance_threshold"].get<double>();
 	ring_point_num_min_ = js["ring"]["point_num_min"].get<uint32_t>();
@@ -67,10 +50,9 @@ PointcloudPolygon::PointcloudPolygon(const nlohmann::json& js, uint8_t size):
 	}
 	edge_point_num_min_ = js["edge"]["point_num_min"].get<uint32_t>();
 	edge_distance_threshold_ = js["edge"]["distance_threshold"].get<double>();
+	
 }
 
-
-// get a region of interesting
 PointcloudPolygon::Polygon3D::ConstPtr PointcloudPolygon::Add(
 	const pcl::PointCloud<pcl::PointXYZI>& pc,
 	pcl::PointCloud<pcl::PointXYZRGB>& pcc)
@@ -86,58 +68,52 @@ PointcloudPolygon::Polygon3D::ConstPtr PointcloudPolygon::Add(
 		p.rgba = 0xffffffff;
 	}
 
-
 	lqh::utils::color::rgbs colors = lqh::utils::color::get_rgbs(7);
 
 	ply->coef.setZero();
 
+	// 1、sector filter
 	SectorFilter(pc, indices);
-	//pcc = MarkPointcloudEdit(pc, colors[0], indices);
 	MarkPointcloud(pcc, colors[0], indices);
-	if(indices.size() < plane_point_num_min_)
-	{
+	if(indices.size() < plane_point_num_min_) {
 		return nullptr;
 	}
-
 	SaveMarkedPointcloud("SectorFilter.pcd", pc, indices);
 
+	// 2、提取标定板平面
 	bool res = ExtractPlane(pc, indices, ply->coef);
-	if(!res)
-	{
+	if(!res) {
 		return nullptr;
 	}
-	//pcc = MarkPointcloudEdit(pc, colors[1], indices);
-	//MarkPointcloud(pcc, colors[1], indices);
 	SaveMarkedPointcloud("ExtractPlane.pcd", pc, indices);
+
+	// 3、提取标定板的左右边缘
 	Indices edge_left, edge_right, inliers;
 	ExtractRings(pc, indices, inliers, edge_left, edge_right);
 
 	MarkPointcloud(pcc, colors[2], inliers);
-	/*MarkPointcloud(pcc, colors[3], edge_left);
-	MarkPointcloud(pcc, colors[4], edge_right);*/
+	MarkPointcloud(pcc, colors[3], edge_left);
+	MarkPointcloud(pcc, colors[4], edge_right);
 
 	SaveMarkedPointcloud("inlier.pcd", pc, inliers);
 	SaveMarkedPointcloud("edge_left.pcd", pc, edge_left);
 	SaveMarkedPointcloud("edge_right.pcd", pc, edge_right);
 
-	// vertexs, line coefficient is not valid
 	ply->inliers.resize(3, inliers.size());
-	for(uint32_t i=0; i<inliers.size(); i++)
-	{
+	for(uint32_t i=0; i<inliers.size(); ++i) {
 		auto& p = pc.points[inliers[i]];
 		ply->inliers.col(i) << p.x, p.y, p.z;
 	}
 
+	// 4、将标定板的边缘信息区分
 	Indices edge0, edge1, edge2, edge3;
-
-	//ExtractEdges(pc, edge_left, ply->edges[0], ply->edges[1]);
-	//ExtractEdges(pc, edge_right, ply->edges[3], ply->edges[2]);
-	/*ExtractEdgesMems(pc, edge_left, ply->edges[0], ply->edges[1], edge0, edge1, true);
-	ExtractEdgesMems(pc, edge_right, ply->edges[3], ply->edges[2], edge3, edge2, false);*/
-	/*ExtractEdgesByTheta(pc, edge_left, ply->coef, ply->edges[0], ply->edges[1], edge0, edge1);
-	ExtractEdgesByTheta(pc, edge_right, ply->coef, ply->edges[3], ply->edges[2], edge3, edge2);*/
 	ExtractEdgesByPrinciple(pc, edge_left, ply->edges[0], ply->edges[1], edge0, edge1);
 	ExtractEdgesByPrinciple(pc, edge_right, ply->edges[3], ply->edges[2], edge3, edge2);
+
+	ExtractVertex(ply->edges[3], ply->edges[0], ply->coef, ply->vertexs[0]);
+	ExtractVertex(ply->edges[0], ply->edges[1], ply->coef, ply->vertexs[1]);
+	ExtractVertex(ply->edges[1], ply->edges[2], ply->coef, ply->vertexs[2]);
+	ExtractVertex(ply->edges[2], ply->edges[3], ply->coef, ply->vertexs[3]);
 
 	MarkPointcloud(pcc, colors[5], edge0);
 	MarkPointcloud(pcc, colors[6], edge1);
@@ -145,13 +121,33 @@ PointcloudPolygon::Polygon3D::ConstPtr PointcloudPolygon::Add(
 	MarkPointcloud(pcc, colors[6], edge3);
 
 	polygon_ = ply;
-	//SaveMarkedPointcloud("Add.pcd",pc, ply);
+
 	SaveMarkedPointcloud("edge0.pcd", ply->edges[0]);
 	SaveMarkedPointcloud("edge1.pcd", ply->edges[1]);
 	SaveMarkedPointcloud("edge2.pcd", ply->edges[2]);
 	SaveMarkedPointcloud("edge3.pcd", ply->edges[3]);
 
 	return ply;
+}
+
+void PointcloudPolygon::ExtractVertex(const Edge3D& edge0, const Edge3D& edge1,
+	const Eigen::Vector4d& plane_coef, Eigen::Vector3d& vertex)
+{
+	Eigen::Vector3d plane_normal = plane_coef.head(3);
+	Eigen::Vector3d edge_first_normal = plane_normal.cross(edge0.coef);
+	Eigen::Vector3d edge_second_normal = plane_normal.cross(edge1.coef);
+
+	Eigen::Matrix3d normal_matrix;
+	normal_matrix.block(0, 0, 1, 3) = edge_first_normal.transpose();
+	normal_matrix.block(1, 0, 1, 3) = edge_second_normal.transpose();
+	normal_matrix.block(2, 0, 1, 3) = plane_normal.transpose();
+
+	Eigen::Vector3d error_vector;
+	error_vector(0) = edge_first_normal.dot(edge0.p0);
+	error_vector(1) = edge_second_normal.dot(edge1.p0);
+	error_vector(2) = -plane_coef(3);
+
+	vertex = normal_matrix.inverse()*error_vector;
 }
 
 void PointcloudPolygon::SetFilterParameters(const Eigen::Vector4d& p)
@@ -174,10 +170,6 @@ void PointcloudPolygon::SetFilterParameters(const Eigen::Vector4d& p)
     }
 }
 
-// angle_start
-// angle_size
-// distance
-// floor_gap
 void PointcloudPolygon::SectorFilter(const PCI& pc, Indices& indices)
 {
 	indices.clear();
@@ -188,24 +180,28 @@ void PointcloudPolygon::SectorFilter(const PCI& pc, Indices& indices)
 
 	double z_threshold = min_pt(2)+ filter_floor_gap_;
 
-	for(uint32_t i=0; i<pc.points.size(); i++)
-	{
-		auto& p = pc.points[i];
-		double theta = std::atan2(p.y, p.x)/MATH_PI*180;
-		if(theta<0)
-		{
-			theta += 360;
-		}
-		double dis = std::sqrt(p.y*p.y + p.x*p.x);
-		double size = theta - filter_angle_start_;
-		if(size < 0)
-		{
-			size += 360;
-		}
+	if (use_angle_filter_) {
+		for (uint32_t i = 0; i < pc.points.size(); ++i) {
+			auto& p = pc.points[i];
+			double theta = std::atan2(p.y, p.x) / MATH_PI * 180;
+			if (theta < 0) {
+				theta += 360;
+			}
+			double dis = std::sqrt(p.y*p.y + p.x*p.x);
+			double size = theta - filter_angle_start_;
+			if (size < 0) {
+				size += 360;
+			}
 
-		if(p.z > z_threshold && dis < filter_distance_
-				&& size < filter_angle_size_)
-		{
+			if (p.z > z_threshold && dis < filter_distance_
+				&& size < filter_angle_size_) {
+				indices.push_back(i);
+			}
+
+		}
+	}
+	else {
+		for (uint32_t i = 0; i < pc.points.size(); ++i) {
 			indices.push_back(i);
 		}
 	}
@@ -249,8 +245,7 @@ bool PointcloudPolygon::ExtractPlane(const PCI& pc, Indices& indices,
 bool PointcloudPolygon::ExtractRings(const PCI& pc, const Indices& indices,
 									 Indices& inlier, Indices& left, Indices& right)
 {
-	struct Point
-	{
+	struct Point {
 		int8_t pitch;
 		uint32_t id;
 		double yaw;
@@ -259,15 +254,14 @@ bool PointcloudPolygon::ExtractRings(const PCI& pc, const Indices& indices,
 			pitch(ppitch),id(pid),yaw(pyaw) {}
 	};
 
-	if(indices.size() < plane_point_num_min_)
-	{
+	if(indices.size() < plane_point_num_min_) {
 		std::cerr << "E: no enough points to extract edge/inlier\n";
 		return false;
 	}
 
+	// 将平面点云按照角度划分成多个区域条带
 	std::map<int16_t, std::vector<Point>> pts;
-	for(auto it:indices)
-	{
+	for(auto it:indices) {
 		auto& p = pc.points[it];
 		double yaw = std::atan2(p.y, p.x);
 		double pitch_d = std::atan(p.z/std::sqrt(p.y*p.y+p.x*p.x))/MATH_PI*180;
@@ -276,31 +270,24 @@ bool PointcloudPolygon::ExtractRings(const PCI& pc, const Indices& indices,
 		pts[pitch].emplace_back(it, pitch, yaw);
 	}
 
-	left.reserve( pts.size()*ring_endpoint_num_ );
-	right.reserve( pts.size()*ring_endpoint_num_ );
-	inlier.reserve(indices.size() - pts.size()*ring_endpoint_num_*2);
+	left.reserve(pts.size()*ring_endpoint_num_);
+	right.reserve(pts.size()*ring_endpoint_num_);
+	inlier.reserve(indices.size() - pts.size()*ring_endpoint_num_ * 2);
 
-	for(auto& r: pts )
-	{
+	for (auto& r : pts) {
 		auto& ring = r.second;
 
-
-		// every ring must have certain points
-		if(ring.size() < ring_point_num_min_)
-		{
+		if (ring.size() < ring_point_num_min_) {
 			continue;
 		}
 
-		std::sort(ring.begin(), ring.end(),
-				  [](const Point& a, const Point& b)
-		{
+		std::sort(ring.begin(), ring.end(), [](const Point& a, const Point& b) {
 			return a.yaw < b.yaw;
 		});
 
 		// clean every ring with 3 sigma principle
-        // sample the center 1/3
-		if (false)
-		{
+		// sample the center 1/3
+		if (false) {
 			double mean = 0;
 			double sigma = 0;
 			uint32_t num = ring.size() - 1;
@@ -338,20 +325,18 @@ bool PointcloudPolygon::ExtractRings(const PCI& pc, const Indices& indices,
 				}
 			}
 		}
-		
-		// save endpoints: edges
-		for(uint32_t i=0; i<ring_endpoint_num_; i++)
-		{
-			uint32_t id_right = ring.size()-1-i;
+
+		// 保存每个条带的两边端点作为标定板左右边缘点
+		for (uint32_t i = 0; i < ring_endpoint_num_; ++i) {
+			uint32_t id_right = ring.size() - 1 - i;
 			right.push_back(ring[i].id);
 			left.push_back(ring[id_right].id);
 		}
-		// save inside points: inlier
-		if( ring.size() > 2*ring_endpoint_num_ )
-		{
-			for(uint32_t i=ring_endpoint_num_;
-					i<ring.size()-ring_endpoint_num_; i++)
-			{
+
+		// 条带中除端点外的点为内点
+		if (ring.size() > 2 * ring_endpoint_num_) {
+			for (uint32_t i = ring_endpoint_num_;
+				i < ring.size() - ring_endpoint_num_; ++i) {
 				inlier.push_back(ring[i].id);
 			}
 		}
@@ -529,8 +514,6 @@ bool PointcloudPolygon::ExtractEdgesMems(const PCI& pc, Indices& indices,
 	return true;
 };
 
-
-
 bool PointcloudPolygon::ExtractEdgesByTheta(const PCI& pc, const Indices& indices, const Eigen::Vector4d& coef,
 										Edge3D& edge0, Edge3D& edge1, Indices& Iedge0, Indices& Iedge1)
 {
@@ -617,51 +600,45 @@ bool PointcloudPolygon::ExtractEdgesByPrinciple(const PCI& pc, const Indices& in
 {
 	Indices first, second;
 	const int number = indices.size();
-	first.reserve(number/2);
-	second.reserve(number/2);
+	first.reserve(number*0.5);
+	second.reserve(number*0.5);
 
 	int id_sep = 0;
 	double threshold = -FLT_MAX;
 
-	for (int i = 3; i < number - 3; i++)
-	{
+	for (int i = 3; i < number - 3; ++i) {
 		pcl::PointCloud<pcl::PointXYZI>::Ptr pc_first(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::PointCloud<pcl::PointXYZI>::Ptr pc_second(new pcl::PointCloud<pcl::PointXYZI>);
 
 		for (int it = 0; it < i; it++)	pc_first->points.push_back(pc.points[indices[it]]);
 		for (int it = i; it < number; it++) pc_second->points.push_back(pc.points[indices[it]]);
-		
+
 		double first_value_first, second_value_first, first_value_second, second_value_second;
 		double eigen_value_ratio_first = PrincipleComponentAnalysis(*pc_first, first_value_first, second_value_first);
 		double eigen_value_ratio_second = PrincipleComponentAnalysis(*pc_second, first_value_second, second_value_second);
-		
+
 		double eigen_value_plus = eigen_value_ratio_first * eigen_value_ratio_second;
-		if (eigen_value_plus >= threshold)
-		{
+		if (eigen_value_plus >= threshold) {
 			id_sep = i;
 			threshold = eigen_value_plus;
 		}
 	}
 
-	for (uint32_t i = 0; i <= id_sep; i++)
-	{
+	for (uint32_t i = 0; i <= id_sep; i++) {
 		first.push_back(indices[i]);
 	}
-	for (uint32_t i = id_sep + 1; i < number; i++)
-	{
+	for (uint32_t i = id_sep + 1; i < number; i++) {
 		second.push_back(indices[i]);
 	}
 
 	auto makeEdge = [&pc, this](Indices& indice, Edge3D& edge, Indices& Iedge)
 	{
-		if (indice.size() > 3)
-		{
+		if (indice.size() > 3) {
 			Indices inlier;
 			FitLine(pc, indice, inlier, edge.coef, edge.p0);
 			edge.points.resize(3, inlier.size());
 			uint32_t i = 0;
-			for (auto it : inlier)
-			{
+			for (auto& it : inlier) {
 				edge.points(0, i) = pc.points[it].x;
 				edge.points(1, i) = pc.points[it].y;
 				edge.points(2, i) = pc.points[it].z;
@@ -669,6 +646,9 @@ bool PointcloudPolygon::ExtractEdgesByPrinciple(const PCI& pc, const Indices& in
 				Iedge.push_back(it);
 				i++;
 			}
+		}
+		else {
+			std::cerr << "no enough pts to fit line." << std::endl;
 		}
 	};
 
@@ -680,33 +660,30 @@ bool PointcloudPolygon::ExtractEdgesByPrinciple(const PCI& pc, const Indices& in
 
 double PointcloudPolygon::PrincipleComponentAnalysis(const PCI& pc, double& first_value, double& second_value)
 {
-	// calculate centroid
 	pcl::PointXYZI centroid;
 	centroid.x = 0.;
 	centroid.y = 0.;
 	centroid.z = 0.;
 
 	const int number = pc.points.size();
+	float number_inv = 1.0 / float(number);
 
 	double x_tmp_center = 0.;
 	double y_tmp_center = 0.;
 	double z_tmp_center = 0.;
 
-	for (int it = 0; it < number; it++)
-	{
+	for (int it = 0; it < number; ++it) {
 		x_tmp_center += pc.points[it].x;
 		y_tmp_center += pc.points[it].y;
 		z_tmp_center += pc.points[it].z;
 	}
 
-	centroid.x = x_tmp_center / number;
-	centroid.y = y_tmp_center / number;
-	centroid.z = z_tmp_center / number;
+	centroid.x = x_tmp_center * number_inv;
+	centroid.y = y_tmp_center * number_inv;
+	centroid.z = z_tmp_center * number_inv;
 
-	// compute covariance matrix
 	Eigen::Matrix<double, 3, Eigen::Dynamic> covariance(3, number);
-	for (int it = 0; it < number; it++)
-	{
+	for (int it = 0; it < number; ++it) {
 		double x_tmp = pc.points[it].x - centroid.x;
 		double y_tmp = pc.points[it].y - centroid.y;
 		double z_tmp = pc.points[it].z - centroid.z;
@@ -715,19 +692,14 @@ double PointcloudPolygon::PrincipleComponentAnalysis(const PCI& pc, double& firs
 		covariance(1, it) = y_tmp;
 		covariance(2, it) = z_tmp;
 	}
-	covariance = (covariance * covariance.transpose())/number;
+	covariance = (covariance * covariance.transpose())*number_inv;
 
-	// svd decompose
 	Eigen::EigenSolver<Eigen::Matrix3d> es(covariance);
 	Eigen::Matrix3d D = es.pseudoEigenvalueMatrix();
 
-	// sort eigen values
-	for (int i = 0; i < 2; i++)
-	{
-		for (int j = i + 1; j < 3; j++)
-		{
-			if (D(i, i) < D(j, j))
-			{
+	for (int i = 0; i < 2; ++i) {
+		for (int j = i + 1; j < 3; ++j) {
+			if (D(i, i) < D(j, j)) {
 				double tmp = D(i, i);
 				D(i, i) = D(j, j);
 				D(j, j) = tmp;
@@ -747,9 +719,8 @@ void PointcloudPolygon::FitLine(const PCI& pc, const Indices& indices,
 	PCI::Ptr pc_ptr(new PCI);
 	pc_ptr->points.reserve(indices.size());
 
-	for(auto it:indices)
-	{
-		pc_ptr->points.push_back( pc.points[it] );
+	for (auto it : indices) {
+		pc_ptr->points.push_back(pc.points[it]);
 	}
 
 	pcl::ModelCoefficients model_coef;
@@ -772,8 +743,7 @@ void PointcloudPolygon::FitLine(const PCI& pc, const Indices& indices,
 	coef.normalize();
 
 	inlier.reserve(ids.indices.size());
-	for(auto it:ids.indices)
-	{
+	for (auto it : ids.indices) {
 		inlier.push_back(indices[it]);
 	}
 }
@@ -785,8 +755,7 @@ bool PointcloudPolygon::SaveMarkedPointcloud(const std::string& fn, Edge3D& edge
 	pcc.points.resize(number);
 
 	int i = 0;
-	for (auto& it : pcc.points)
-	{
+	for (auto& it : pcc.points) {
 		if (i >= number) break;
 
 		it.rgba = 0xffff0000;
@@ -806,13 +775,11 @@ bool PointcloudPolygon::SaveMarkedPointcloud(const std::string& fn, const PCI& p
 	pcl::PointCloud<pcl::PointXYZRGB> pcc;
 	pcl::copyPointCloud(pc, pcc);
 
-	for(auto& it:pcc.points)
-	{
+	for(auto& it:pcc.points) {
 		it.rgba = 0xffffffff;
 	}
 
-	for(auto it: indices)
-	{
+	for(auto it: indices) {
 		pcc.points[it].rgba = 0xffff0000;
 	}
 
@@ -830,18 +797,16 @@ bool PointcloudPolygon::SaveMarkedPointcloud(const std::string& fn,
 	lqh::utils::color::rgbs colors = lqh::utils::color::get_rgbs(size_+1);
 	pcl::PointXYZRGB p;
 
-	for(uint32_t i=0; i<size_; i++)
-	{
+	for (uint32_t i = 0; i < size_; ++i) {
 		p.r = colors[i][0];
 		p.g = colors[i][1];
 		p.b = colors[i][2];
 
 		auto& ps = ply->edges[i].points;
-		for(uint32_t j=0; j<ps.cols(); j++)
-		{
-			p.x = ps(0,j);
-			p.y = ps(1,j);
-			p.z = ps(2,j);
+		for (uint32_t j = 0; j < ps.cols(); ++j) {
+			p.x = ps(0, j);
+			p.y = ps(1, j);
+			p.z = ps(2, j);
 			pcc.push_back(p);
 		}
 	}
@@ -863,12 +828,10 @@ bool PointcloudPolygon::SaveMarkedPointcloud(const std::string& fn,
 bool PointcloudPolygon::SaveEdgePoints(const std::string& fn_prefix)
 {
 	Eigen::IOFormat fmt(Eigen::FullPrecision, 0, ", ", "\n", "", "", "", "");
-	for(uint8_t i=0; i<polygon_->edges.size(); i++)
-	{
-		std::ofstream f(fn_prefix+std::to_string(i)+".csv");
+	for (uint8_t i = 0; i < polygon_->edges.size(); ++i) {
+		std::ofstream f(fn_prefix + std::to_string(i) + ".csv");
 
-		if( !f.good() )
-		{
+		if (!f.good()) {
 			return false;
 		}
 
@@ -884,8 +847,7 @@ void PointcloudPolygon::MarkPointcloud(pcl::PointCloud<pcl::PointXYZRGB>& pcc,
 									   const lqh::utils::color::rgb& color,
 									   const Indices& indices) const
 {
-	for(auto it : indices)
-	{
+	for(auto it : indices) {
 		auto& p = pcc.points[it];
 		p.r = color[0];
 		p.g = color[1];
@@ -901,8 +863,7 @@ pcl::PointCloud<pcl::PointXYZRGB> PointcloudPolygon::MarkPointcloudEdit(const pc
 	const int number = indices.size();
 	pcc.points.resize(number);
 	
-	for (int it = 0; it < number; it++)
-	{
+	for (int it = 0; it < number; ++it) {
 		pcc.points[it].x = pc.points[indices[it]].x;
 		pcc.points[it].y = pc.points[indices[it]].y;
 		pcc.points[it].z = pc.points[indices[it]].z;
@@ -914,6 +875,3 @@ pcl::PointCloud<pcl::PointXYZRGB> PointcloudPolygon::MarkPointcloudEdit(const pc
 
 	return pcc;
 }
-
-
-/*****************************END OF FILE**************************************/

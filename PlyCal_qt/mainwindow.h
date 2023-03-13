@@ -49,34 +49,34 @@ private:
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr pc_proj;
 
         SensorData(uint32_t index):img_good(false), pc_good(false),
-            id(index),
-            img(nullptr), pc(nullptr),
+            id(index), img(nullptr), pc(nullptr),
             img_marked(nullptr), pc_marked(nullptr),
             img_proj(nullptr), pc_proj(nullptr){}
-        bool good()
-        {
+        bool good() {
             return (img_good && pc_good);
         }
     };
 
     Ui::MainWindow *ui;
 
-    QString config_path_;
-    nlohmann::json js_;
+	QString			data_root_;			// 数据读取路径
+    QString			config_path_;		// 配置文件路径
+    nlohmann::json	js_;				// 配置文件handle
 
-    bool is_calibrated_;
-    uint32_t sid_;
-    QString data_root_;
+    bool			is_calibrated_;		// 是否已经标定
+	bool			is_initialized_;	// 是否已经初始化
 
-    std::shared_ptr<cv::Mat> img_;
-    pcl::PointCloud<pcl::PointXYZI>::Ptr pc_;
+    uint32_t		sid_;
 
-    std::unique_ptr<DataReader> data_reader_;
-    std::unique_ptr<PointcloudViewer> pc_viewer_;
-    std::unique_ptr<ImageViewer> img_viewer_;
-    std::unique_ptr<TFwindow> tfwindow_;
-    std::unique_ptr<lqh::Calibrator> calibrator_;
-    std::vector<SensorData> sensor_data_;
+    std::shared_ptr<cv::Mat>				img_;			// 图像数据
+    pcl::PointCloud<pcl::PointXYZI>::Ptr	pc_;			// 点云数据
+	std::vector<SensorData>					sensor_data_;	// 配对后的图像点云数据
+    std::unique_ptr<DataReader>				data_reader_;	// 数据读取工具指针
+	std::unique_ptr<lqh::Calibrator>		calibrator_;	// 外参标定工具指针
+
+    std::unique_ptr<PointcloudViewer>		pc_viewer_;		// 点云视口
+    std::unique_ptr<ImageViewer>			img_viewer_;	// 图像视口
+    std::unique_ptr<TFwindow>				tfwindow_;		// 点云姿态变换工具
 
     void updateLabels();
     bool processData(bool is_check = true);
@@ -93,6 +93,7 @@ private slots:
     void on_quick_next_pose_clicked();
     void on_delete_pose_clicked();
     void on_calibrate_clicked();
+	void on_initialize_clicked();
 
     void on_pick_points_start_clicked();
     void on_pick_points_end_clicked();

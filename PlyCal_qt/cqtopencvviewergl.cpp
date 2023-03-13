@@ -8,7 +8,7 @@ CQtOpenCVViewerGl::CQtOpenCVViewerGl(QWidget *parent) :
 {
     points_.reserve(4);
 
-	mBgColor = QColor::fromRgb(150, 150, 150);
+	mBgColor = QColor::fromRgb(255, 255, 255);
 }
 
 // 初始化函数，在Widget刚加载时被调用
@@ -148,8 +148,7 @@ bool CQtOpenCVViewerGl::showImage(const cv::Mat& image, bool isInside)
 void CQtOpenCVViewerGl::mousePressEvent(QMouseEvent *event)
 {
 	// this is a left button event
-    if(!is_pick_points_ || event->button() != Qt::LeftButton)
-    {
+    if(!is_pick_points_ || event->button() != Qt::LeftButton) {
         return;
     }
 
@@ -160,20 +159,18 @@ void CQtOpenCVViewerGl::mousePressEvent(QMouseEvent *event)
 	float widget_height = height();
 	float widget_ratio = widget_width / widget_height;
 
-    if(widget_ratio > mImgRatio )
-    {
+    if(widget_ratio > mImgRatio) {
         img_y = height();
         off_y = 0;
         img_x = floor(height()*mImgRatio);
         off_x = floor((width() - img_x)/2);
     }
-    else
-    {
-        img_x = width();
-        off_x = 0;
-        img_y = floor(width()/mImgRatio);
-        off_y = floor((height() - img_y)/2);
-    }
+	else {
+		img_x = width();
+		off_x = 0;
+		img_y = floor(width() / mImgRatio);
+		off_y = floor((height() - img_y) / 2);
+	}
 
 	// get position in image
     double x = static_cast<double>(event->x() - off_x)/img_x*img_.cols;
@@ -182,8 +179,7 @@ void CQtOpenCVViewerGl::mousePressEvent(QMouseEvent *event)
     points_.emplace_back(x,y);
     cv::Mat img;
     img_.copyTo(img);
-    for(const auto& p: points_)
-    {
+    for(const auto& p: points_) {
         cv::circle(img, p, 5, cv::Scalar(0,0,255),-1);
     }
     showImage(img, true);

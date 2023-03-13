@@ -12,23 +12,12 @@
   * Distributed under terms of the MIT license.
   ******************************************************************************
   */
-
-/* Includes ------------------------------------------------------------------*/
 #include "image_polygon.h"
 
 #include <iostream>
 #include <fstream>
 
 #include <Eigen/Dense>
-
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-
-/* Exported functions --------------------------------------------------------*/
 
 /**
   * @brief
@@ -42,8 +31,8 @@ int main(int argc, char** argv)
 
 	if(argc >= 3)
 	{
-		config_path = std::string(argv[1]);
-		img_path = std::string(argv[2]);
+		config_path = std::string(argv[2]);
+		img_path = std::string(argv[1]);
 	}
 	else
 	{

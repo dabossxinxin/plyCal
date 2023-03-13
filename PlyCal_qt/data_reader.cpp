@@ -26,20 +26,10 @@
 
 #include <pcl/io/pcd_io.h>
 
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-
 const QString DataReader::kPointcloudFolderName ("pointcloud");
 const QString DataReader::kImageFolderName("image_orig");
 const QString DataReader::kLaserscanFolderName("laser");
 const QString DataReader::kTransformFileNmae ("tf.txt");
-
-
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-/* Exported functions --------------------------------------------------------*/
 
 DataReader::DataReader(const QString& path):
     dataset_root_(path),
@@ -97,23 +87,20 @@ uint32_t DataReader::getDataNum(const QString &path)
     return imgs.count();
 }
 
-
-// open pointcloud data
+// 打开点云数据
 pcl::PointCloud<pcl::PointXYZI>::Ptr DataReader::getPointcloud()
 {
     QString fp = dataset_root_ + QDir::separator() + kPointcloudFolderName +
                  QDir::separator() + QString("%1.pcd").arg(index_);
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr pc(new pcl::PointCloud<pcl::PointXYZI>);
-    if(pcl::io::loadPCDFile(fp.toStdString(), *pc) == 1)
-    {
+    if(pcl::io::loadPCDFile(fp.toStdString(), *pc) == 1) {
         pc = nullptr;
     }
     return pc;
 }
 
-
-
+// 打开图像数据
 std::shared_ptr<cv::Mat> DataReader::getImage()
 {
     if(flag_kd_ &0x03 != 0x03)
@@ -138,10 +125,10 @@ std::shared_ptr<cv::Mat> DataReader::getImage()
 
 bool DataReader::moveNext()
 {
-    if(index_ >= (size_-1))
-    {
-        return false;
-    }
+	if (index_ >= (size_ - 1)) {
+		return false;
+	}
+
     index_++;
     return true;
 }

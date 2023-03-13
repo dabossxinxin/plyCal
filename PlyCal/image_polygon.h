@@ -12,12 +12,8 @@
   * Distributed under terms of the MIT license.
   ******************************************************************************
   */
-
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __IMAGE_POLYGON_H
 #define __IMAGE_POLYGON_H
-
-/* Includes ------------------------------------------------------------------*/
 
 #include <string>
 #include <vector>
@@ -31,9 +27,6 @@
 #include "edlines/EDLineDetector.h"
 
 using namespace std;
-
-/* Exported macro ------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
 
 namespace lqh
 {
@@ -129,15 +122,8 @@ private:
     void MarkImage(cv::Mat& img_out, Polygon2D::ConstPtr ply);
 	bool SaveMarkedImage(const std::string& fn, const cv::Mat& img,
 						 const std::list<Line2D>&ls);
-	/*bool SaveMarkedImage(const std::string& fn, const cv::Mat& img,
-						Polygon2D::ConstPtr ply);*/
 };
 
 }
 
-/* Exported constants --------------------------------------------------------*/
-/* Exported functions --------------------------------------------------------*/
-
 #endif /* !__IMAGE_POLYGON_H */
-
-/*****************************END OF FILE**************************************/

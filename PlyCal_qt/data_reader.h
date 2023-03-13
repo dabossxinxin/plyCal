@@ -13,11 +13,9 @@
   ******************************************************************************
   */
 
-/* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __DATA_READER_H
 #define __DATA_READER_H
 
-/* Includes ------------------------------------------------------------------*/
 #include <stdint.h>
 
 #include <QString>
@@ -27,28 +25,30 @@
 
 #include <opencv2/opencv.hpp>
 
-/* Exported macro ------------------------------------------------------------*/
-/* Exported types ------------------------------------------------------------*/
 class DataReader
 {
 public:
     DataReader(const QString& path);
-    bool isValid()
-    {
+    bool isValid() {
         return is_valid_;
     }
+
+	// 加载点云数据
     pcl::PointCloud<pcl::PointXYZI>::Ptr getPointcloud();
+	// 加载图像数据
     std::shared_ptr<cv::Mat> getImage();
+
     bool moveNext();
-    uint32_t getDatasetSize()
-    {
+    uint32_t getDatasetSize() {
         return size_;
     }
-    uint32_t getCurrentId()
-    {
+    uint32_t getCurrentId() {
         return index_;
     }
+
+	// 设置相机内参
     void setCameraK(const Eigen::Matrix3d& k);
+	// 设置相机畸变参数
     void setCameraD(const Eigen::Matrix<double,5,1>& d);
 
 private:
@@ -69,10 +69,6 @@ private:
     uint32_t getDataNum(const QString& path);
 };
 
-/* Exported constants --------------------------------------------------------*/
-/* Exported functions --------------------------------------------------------*/
-
 #endif /* !__DATA_READER_H */
 
-/*****************************END OF FILE**************************************/
 

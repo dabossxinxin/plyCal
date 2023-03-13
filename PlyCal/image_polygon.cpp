@@ -20,18 +20,8 @@
 #include <iostream>
 #include <cmath>
 
-
-
 using namespace lqh;
 using namespace std;
-
-/* Private typedef -----------------------------------------------------------*/
-/* Private define ------------------------------------------------------------*/
-/* Private macro -------------------------------------------------------------*/
-/* Private variables ---------------------------------------------------------*/
-/* Private function prototypes -----------------------------------------------*/
-/* Private functions ---------------------------------------------------------*/
-/* Exported functions --------------------------------------------------------*/
 
 /**
   * @brief
@@ -92,7 +82,6 @@ ImagePolygon::ImagePolygon(const nlohmann::json& js, uint8_t size):
         pts(1,i) = js["init"][i][1].get<double>();
     }
     polygon_ = InitPolygon(pts);
-
 }
 
 // the number of input points must be the same as the number of vertices of the rectangle
@@ -214,8 +203,8 @@ ImagePolygon::Polygon2D::ConstPtr ImagePolygon::ExtractPolygon(const cv::Mat& im
     {
         polygon_ = ply;
         UpdateParameters();
-        MarkImage(img_out, ply);
-		SaveMarkedImage("TruePolygon.png", img_out, ply);
+        //MarkImage(img_out, ply);
+		SaveMarkedImage("TruePolygon.png", img, ply);
         return ply;
     }
     else
@@ -229,10 +218,8 @@ bool ImagePolygon::ExtractLines(const cv::Mat& img, std::list<Line2D>& ls)
 {
 	cv::Mat img_h;
 	cv::cvtColor(img, img_h, cv::COLOR_BGR2GRAY);
-//	cv::imwrite("img_gray.png", img_h);
 
-	if(detector_->EDline(img_h) < 0 )
-	{
+	if (detector_->EDline(img_h) < 0) {
 		std::cerr << "E: EDline detector fail to detect lines in the image\n";
 		return false;
 	}
@@ -246,29 +233,27 @@ bool ImagePolygon::ExtractLines(const cv::Mat& img, std::list<Line2D>& ls)
 		last.dir = std::atan2(-detector_->lineEquations_[i][0],
 							  detector_->lineEquations_[i][1])/MATH_PI*180;
 
-		if(last.dir<0)
-		{
+		if (last.dir < 0) {
 			last.dir += 180;
 		}
 
-		last.p0  << detector_->lineEndpoints_[i][0],
-				 detector_->lineEndpoints_[i][1],
-				 1;
+		last.p0 << detector_->lineEndpoints_[i][0],
+			detector_->lineEndpoints_[i][1],
+			1;
 		last.p1 << detector_->lineEndpoints_[i][2],
-				detector_->lineEndpoints_[i][3],
-				1;
+			detector_->lineEndpoints_[i][3],
+			1;
 		last.coef << detector_->lineEquations_[i][0],
-				  detector_->lineEquations_[i][1],
-				  detector_->lineEquations_[i][2];
-		last.coef = last.coef/(last.coef.head(2).norm());
+			detector_->lineEquations_[i][1],
+			detector_->lineEquations_[i][2];
+		last.coef = last.coef / (last.coef.head(2).norm());
 
 		last.points.resize(2, detector_->lines_.sId[i+1]-detector_->lines_.sId[i]);
 
 		uint16_t col_index = 0;
-		for(uint16_t j=detector_->lines_.sId[i]; j<detector_->lines_.sId[i+1]; j++)
-		{
+		for (uint16_t j = detector_->lines_.sId[i]; j < detector_->lines_.sId[i + 1]; ++j) {
 			last.points.col(col_index++) << detector_->lines_.xCors[j],
-							detector_->lines_.yCors[j];
+				detector_->lines_.yCors[j];
 		}
 	}
 
@@ -276,7 +261,7 @@ bool ImagePolygon::ExtractLines(const cv::Mat& img, std::list<Line2D>& ls)
 }
 
 /**
- * filter criteria
+ * ¹ýÂË×¼Ôò
  * 1. center to endpoint distances
  * 2. center to line distance
  * 3. endpoints to line distances
@@ -284,51 +269,47 @@ bool ImagePolygon::ExtractLines(const cv::Mat& img, std::list<Line2D>& ls)
  */
 bool ImagePolygon::FilterLines(std::list<Line2D>& ls, Polygon2D::ConstPtr prev)
 {
-    if(ls.size() < size_ )
-	{
+    if(ls.size() < size_ ) {
 		return false;
     }
+
 	auto l = ls.begin();
-	while( l != ls.end() )
-	{
-		auto ln = l;
-		l++;
+	while( l != ls.end()){
+		auto ln = l++;
+
         double center2point_0 = (prev->center - ln->p0).norm();
         double center2point_1 = (prev->center - ln->p1).norm();
         double center2line = std::abs(prev->center.dot(ln->coef));
 
-		if( center2point_0 > filter_point_center_max_ ||
-				center2point_1 > filter_point_center_max_ ||
-				center2line < filter_line_center_min_  )
-		{
-			ls.erase( ln );
+		if (center2point_0 > filter_point_center_max_ ||
+			center2point_1 > filter_point_center_max_ ||
+			center2line < filter_line_center_min_) {
+			ls.erase(ln);
 			continue;
 		}
 
 		bool is_remove = true;
-		for(uint32_t i=0; i<size_; i++)
-		{
-            double d = std::abs(ln->p0.dot(prev->edges[i].coef));
-            d += std::abs(ln->p1.dot(prev->edges[i].coef));
-            double angle = std::abs(ln->dir - prev->edges[i].dir);
-			if(angle > 90)
+		for (uint32_t i = 0; i < size_; i++) {
+			double d = std::abs(ln->p0.dot(prev->edges[i].coef));
+			d += std::abs(ln->p1.dot(prev->edges[i].coef));
+			double angle = std::abs(ln->dir - prev->edges[i].dir);
+			if (angle > 90)
 			{
 				angle = 180 - angle;
 			}
-			if(angle < filter_line_angle_threshold_ &&
-					d < filter_point_line_threshold_)
+			if (angle < filter_line_angle_threshold_ &&
+				d < filter_point_line_threshold_)
 			{
 				is_remove = false;
 			}
 		}
 
-		if(is_remove )
-		{
-			ls.erase( ln );
+		if (is_remove) {
+			ls.erase(ln);
 		}
 	}
 
-    return ls.size() >= size_ ? true : false;
+	return ls.size() >= size_ ? true : false;
 }
 
 /**
@@ -338,6 +319,10 @@ bool ImagePolygon::FilterLines(std::list<Line2D>& ls, Polygon2D::ConstPtr prev)
  */
 bool ImagePolygon::MergeLines(std::list<Line2D>& ls)
 {
+#define X_AXIS 0
+#define Y_AXIS 1
+#define Z_AXIS 3
+
     if(ls.size() < size_)
 	{
         std::cerr << "E: no enough line segments for " << __FUNCTION__
@@ -384,10 +369,10 @@ bool ImagePolygon::MergeLines(std::list<Line2D>& ls)
 				endpoint.col(1) = ln->p1;
 				endpoint.col(2) = ln_nx->p0;
 				endpoint.col(3) = ln_nx->p1;
-				uint32_t axis = 0; // x-axis
+				uint32_t axis = X_AXIS; // x-axis
 				if(std::abs(ln->dir - 90) < 10)
 				{
-					axis = 1; // y-axis
+					axis = Y_AXIS; // y-axis
 				}
 
 				uint8_t id_max =0, id_min = 1;
@@ -721,7 +706,6 @@ void ImagePolygon::UpdateParameters(Polygon2D::Ptr ply)
 	filter_point_center_max_ = center2point.maxCoeff()*(1+filter_point_center_factor_);
 	filter_line_center_min_ = center2line.minCoeff()*(1-filter_point_center_factor_);
 
-	//@TODO
 	// distance of point to center
     double dis0=0, dis1=0;
     dis0 += std::abs(ply->edges[2].coef.dot(ply->vertexs.col(0) ));
@@ -739,21 +723,18 @@ void ImagePolygon::UpdateParameters(Polygon2D::Ptr ply)
 	dis1 = dis1 / 4;
     double angle0 = LineAngleAverage(ply->edges[1].dir, ply->edges[3].dir);
 
-	if(dis0 < dis1)
-	{
+	if(dis0 < dis1){
 		width_ = dis0;
 		length_ = dis1;
 		angle_width_ = angle0;
 		angle_length_ = angle1;
 	}
-	else
-	{
+	else {
 		width_ = dis1;
 		length_ = dis0;
 		angle_width_ = angle1;
 		angle_length_ = angle0;
 	}
-
 
 	std::cout << "width: " << width_ << " length: " << length_
 			  << "\n angle_width: " << angle_width_
@@ -765,7 +746,7 @@ void ImagePolygon::UpdateParameters(Polygon2D::Ptr ply)
 double ImagePolygon::LineAngleError(double l0, double l1)
 {
 	double e = std::abs(l0 - l1);
-	if(e >90)
+	if(e > 90)
 	{
 		e = 180 - e;
 	}

@@ -16,7 +16,6 @@
 #include <string>
 #include <fstream>
 
-
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow),
@@ -27,38 +26,36 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
+	// 打开config文件
     config_path_ = QFileDialog::getOpenFileName(this,
                    tr("Open File"),
                    ".",
                    tr("Config JSON Files(*.json)"));
 
-    if(config_path_.isEmpty())
-    {
-        QTimer::singleShot(0,this, &QApplication::quit);
+    if(config_path_.isEmpty()) {
+		QTimer::singleShot(0, this, &QApplication::quit);
         return;
     }
 
     std::ifstream f(config_path_.toStdString());
-    if(!f.good())
-    {
+    if(!f.good()) {
         f.close();
         QTimer::singleShot(0,this, &QApplication::quit);
         return;
     }
 
-    try
-    {
+    try {
         f >> js_;
     }
-    catch(nlohmann::json::parse_error& e)
-    {
+    catch(nlohmann::json::parse_error& e) {
         std::cerr << e.what();
         f.close();
         QTimer::singleShot(0,this, &QApplication::quit);
         return;
     }
-    calibrator_.reset(new lqh::Calibrator(js_));
 
+	// 初始化标定类
+	calibrator_.reset(new lqh::Calibrator(js_));
 
     auto& flt = js_["pc"]["filter"];
     ui->angle_start_slide->setValue(static_cast<int>(flt["angle_start"]));
@@ -84,13 +81,11 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent * event)
 {
-    if(img_viewer_)
-    {
+    if(img_viewer_) {
         img_viewer_->close();
         img_viewer_.release();
     }
-    if(pc_viewer_)
-    {
+    if(pc_viewer_) {
         pc_viewer_->close();
         img_viewer_.release();
     }
@@ -113,30 +108,26 @@ void MainWindow::on_actionSet_K_triggered()
                                        QLineEdit::Normal,
                                        last,
                                        &ok);
-    if(!ok)
-    {
+    if(!ok) {
         return;
     }
-    if(!ks.isEmpty())
-    {
-        ks.replace(QChar('\n'), QChar(' '));
-        QStringList ns = ks.simplified().split(" ");
-        if(ns.size() == 9)
-        {
-            Eigen::Matrix3d CK;
-            for(uint8_t i=0; i<9; i++)
-            {
-                CK(i/3,i%3) = ns[i].toDouble();
-                K[i/3][i%3] = CK(i/3,i%3);
-            }
-            if(data_reader_ != nullptr)
-            {
-                data_reader_->setCameraK(CK);
-            }
-            calibrator_->SetCameraK(CK);
-            return;
-        }
-    }
+
+	if (!ks.isEmpty()) {
+		ks.replace(QChar('\n'), QChar(' '));
+		QStringList ns = ks.simplified().split(" ");
+		if (ns.size() == 9) {
+			Eigen::Matrix3d CK;
+			for (uint8_t i = 0; i < 9; i++) {
+				CK(i / 3, i % 3) = ns[i].toDouble();
+				K[i / 3][i % 3] = CK(i / 3, i % 3);
+			}
+			if (data_reader_ != nullptr) {
+				data_reader_->setCameraK(CK);
+			}
+			calibrator_->SetCameraK(CK);
+			return;
+		}
+	}
     QMessageBox::warning(this, tr("Error"), tr("Invalid parameters"));
 }
 
@@ -157,28 +148,23 @@ void MainWindow::on_actionSet_D_triggered()
                                        QLineEdit::Normal,
                                        last,
                                        &ok);
-    if(!ok)
-    {
+    if(!ok) {
         return;
     }
-    if(!ks.isEmpty())
-    {
+    if(!ks.isEmpty()){
         Eigen::Matrix<double,5,1> CD;
         ks.replace(QChar('\n'), QChar(' '));
         QStringList ns = ks.split(" ");
-        if(ns.size() == 5)
-        {
-            for(uint8_t i=0; i<5; i++)
-            {
-                CD(i) = ns[i].toDouble();
-                D[i] = CD(i);
-            }
-            if(data_reader_ != nullptr)
-            {
-                data_reader_->setCameraD(CD);
-            }
-            return;
-        }
+		if (ns.size() == 5) {
+			for (uint8_t i = 0; i < 5; i++) {
+				CD(i) = ns[i].toDouble();
+				D[i] = CD(i);
+			}
+			if (data_reader_ != nullptr) {
+				data_reader_->setCameraD(CD);
+			}
+			return;
+		}
     }
     QMessageBox::warning(this, tr("Error"), tr("Invalid parameters"));
 }
@@ -269,13 +255,12 @@ void MainWindow::on_next_pose_clicked()
 
 void MainWindow::on_quick_next_pose_clicked()
 {
-    if(is_calibrated_)
-    {
-        // previous
-        if (sid_ >0)
-        {
-            sid_--;
-        }
+	if (is_calibrated_)
+	{
+		// previous
+		if (sid_ > 0) {
+			sid_--;
+		}
         showCalibrateResult();
     }
     else
@@ -286,8 +271,7 @@ void MainWindow::on_quick_next_pose_clicked()
 
         bool res = processData();
 
-        while(res)
-        {
+        while(res) {
             res = processData();
             QCoreApplication::processEvents(QEventLoop::AllEvents);
 //            QThread::msleep(5);
@@ -309,25 +293,56 @@ void MainWindow::on_delete_pose_clicked()
     processData(false);
 }
 
+void MainWindow::on_initialize_clicked()
+{
+	if (sensor_data_.size() < 1) {
+		QMessageBox::warning(this, tr("Error"), tr("No enough data to do initialize, at lease 1"));
+		return;
+	}
+
+	setEnabledAll(false);
+	setCursor(Qt::WaitCursor);
+
+	bool res = calibrator_->Initialize();
+
+	setCursor(Qt::ArrowCursor);
+	setEnabledAll(true);
+
+	if (!res) {
+		QMessageBox::warning(this, tr("Error"), tr("Fail to initialize"));
+		return;
+	}
+
+	is_initialized_ = true;
+	ui->quick_next_pose->setText(tr("Previous"));
+	showCalibrateResult();
+	pc_viewer_->showCoordinateSystem(Eigen::Affine3f(calibrator_->GetTransformation().inverse().cast<float>()), 1, 0.5);
+
+	auto T = calibrator_->GetTransformation();
+	auto& tf = js_["tf"];
+	tf.clear();
+	for (uint8_t i = 0; i < 4; i++) {
+		tf.push_back(std::vector<double> {T(i, 0), T(i, 1), T(i, 2), T(i, 3)});
+	}
+}
+
 void MainWindow::on_calibrate_clicked()
 {
-    if(sensor_data_.size() < 1)
-    {
-        QMessageBox::warning(this, tr("Error"), tr("No enough data to do calibration, at lease 3"));
+    if(sensor_data_.size() < 1) {
+        QMessageBox::warning(this, tr("Error"), tr("No enough data to do calibration, at lease 1"));
         return;
     }
 
+	// 外参标定计算
     setEnabledAll(false);
     setCursor(Qt::WaitCursor);
-//    calibrator_->SavePolygonData(std::string("/home/nick/tmp"));
 
     bool res = calibrator_->Compute();
 
     setCursor(Qt::ArrowCursor);
     setEnabledAll(true);
 
-    if(!res)
-    {
+    if(!res) {
         QMessageBox::warning(this, tr("Error"), tr("Fail to calibrate"));
         return;
     }
@@ -340,8 +355,7 @@ void MainWindow::on_calibrate_clicked()
     auto T =  calibrator_->GetTransformation();
     auto& tf = js_["tf"];
     tf.clear();
-    for(uint8_t i=0; i<4; i++)
-    {
+    for(uint8_t i=0; i<4; i++) {
         tf.push_back(std::vector<double> {T(i,0), T(i,1), T(i,2), T(i,3)});
     }
 }
@@ -389,55 +403,69 @@ void MainWindow::on_pick_points_end_clicked()
 
 void MainWindow::updateLabels()
 {
-    if(sensor_data_.size() > 0)
-    {
-        ui->current_data_id->setText(QString::number(sid_));
+	if (sensor_data_.size() > 0) {
+		ui->current_data_id->setText(QString::number(sid_));
 
-        uint32_t num  = sensor_data_.size();
-        if(!sensor_data_.back().good())
-        {
-            num -= 1;
-        }
-        ui->processed_data_num->setText(QString::number(num));
-    }
-    else
-    {
-        ui->current_data_id->setText("Null");
-        ui->processed_data_num->setText("0");
-    }
+		uint32_t num = sensor_data_.size();
+		if (!sensor_data_.back().good()) {
+			num -= 1;
+		}
+		ui->processed_data_num->setText(QString::number(num));
+
+		if (is_calibrated_ || is_initialized_) {
+			int iteration_nums = calibrator_->GetIterations();
+			double reproject_error = calibrator_->GetReprojectError();
+
+			ui->iteration_num->setText(QString::number(iteration_nums));
+			ui->reprojection_error->setText(QString::number(reproject_error));
+			
+			if (is_calibrated_ && iteration_nums > calibrator_->GetMaxIterations()) {
+				ui->is_convergence->setText(tr("false"));
+			}
+			if (is_calibrated_ && iteration_nums <= calibrator_->GetMaxIterations()) {
+				ui->is_convergence->setText(tr("true"));
+			}
+		}
+	}
+	else {
+		ui->current_data_id->setText(tr("Null"));
+		ui->processed_data_num->setText(tr("0"));
+		ui->iteration_num->setText(tr("Null"));
+		ui->reprojection_error->setText(tr("Null"));
+		ui->is_convergence->setText(tr("Null"));
+	}
 }
 
 
 bool MainWindow::processData(bool is_check)
 {
-    if(data_reader_ == nullptr)
-    {
+    if(data_reader_ == nullptr) {
         QMessageBox::warning(this, tr("Error"), tr("Open dataset first"));
         return false;
     }
 
-    if( is_check && sensor_data_.size()>0 && !sensor_data_.back().good() )
-    {
+    if( is_check && sensor_data_.size()>0 && !sensor_data_.back().good() ) {
         QMessageBox::warning(this, tr("Error"), tr("Current data is not good, adjust or delete"));
         return false;
     }
 
-    if(sensor_data_.size() > 0 && !data_reader_->moveNext())
-    {
+    if(sensor_data_.size() > 0 && !data_reader_->moveNext()) {
         return false;
     }
 
     sensor_data_.emplace_back(data_reader_->getCurrentId());
-    sid_ = sensor_data_.size()-1;       // first element 
+	sid_ = sensor_data_.size() - 1;
     auto& last = sensor_data_.back();
+
+	// 获取点云数据
     last.img = data_reader_->getImage();
-    if(!last.img )
-    {
+    if(!last.img ) {
         sensor_data_.pop_back();
         QMessageBox::warning(this, tr("Error"), tr("Fail to read image"));
         return false;
     }
 
+	// 获取图像数据
     last.pc = data_reader_->getPointcloud();
     if(!last.pc)
     {
@@ -446,23 +474,24 @@ bool MainWindow::processData(bool is_check)
         return false;
     }
 
+	// 将数据加入到标定工具指针中
     last.img_marked = std::make_shared<cv::Mat>();
     last.img->copyTo(*last.img_marked);
     last.pc_marked.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
     last.pid = calibrator_->Add(*last.img, *last.pc, *last.img_marked, *last.pc_marked);
-    if(calibrator_->ImageGood(last.pid))
-    {
+    if(calibrator_->ImageGood(last.pid)) {
         last.img_good = true;
     }
-    if(calibrator_->PointcloudGood(last.pid))
-    {
+    if(calibrator_->PointcloudGood(last.pid)) {
         last.pc_good = true;
     }
 
+	// 将数据加入到视口中显示
     img_viewer_->showImage(last.img_marked);
     pc_viewer_->showPointcloud(last.pc_marked);
 
-    sid_ = sensor_data_.size()-1;
+	// 更新界面中的label
+	sid_ = sensor_data_.size() - 1;
     updateLabels();
 
     return true;
@@ -472,16 +501,14 @@ bool MainWindow::processData(bool is_check)
 void MainWindow::setEnabledAll(bool status)
 {
     QList<QPushButton*> btns = ui->centralWidget->findChildren<QPushButton*>();
-    for(auto& it : btns)
-    {
-        it->setEnabled(status);
-    }
+	for (auto& it : btns) {
+		it->setEnabled(status);
+	}
 
     QList<QSlider*> sliders = ui->pointcloud_group->findChildren<QSlider*>();
-    for(auto& it : sliders)
-    {
-        it->setEnabled(status);
-    }
+	for (auto& it : sliders) {
+		it->setEnabled(status);
+	}
 }
 
 
@@ -489,19 +516,19 @@ void MainWindow::showCalibrateResult()
 {
     auto& sd = sensor_data_[sid_];
 
-    if(sd.img_proj == nullptr || sd.pc_proj == nullptr)
-    {
-        sd.img_proj.reset(new cv::Mat);
-        sd.img->copyTo(*sd.img_proj);
-        sd.pc_proj.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
-        pcl::copyPointCloud(*sd.pc, *sd.pc_proj);
-        for(auto& p: sd.pc_proj->points)
-        {
-            p.rgba = 0xffffffff;
-        }
-        calibrator_->Project(*sd.pc_proj, *sd.img_proj);
-    }
+	// 图像点云相互投影
+	if (sd.img_proj == nullptr || sd.pc_proj == nullptr) {
+		sd.img_proj.reset(new cv::Mat);
+		sd.img->copyTo(*sd.img_proj);
+		sd.pc_proj.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
+		pcl::copyPointCloud(*sd.pc, *sd.pc_proj);
+		for (auto& p : sd.pc_proj->points) {
+			p.rgba = 0xffffffff;
+		}
+		calibrator_->Project(*sd.pc_proj, *sd.img_proj);
+	}
 
+	// 更新图像点云视口
     img_viewer_->showImage(sd.img_proj);
     pc_viewer_->showPointcloud(sd.pc_proj);
 
@@ -510,9 +537,9 @@ void MainWindow::showCalibrateResult()
 
 void MainWindow::on_actionSave_Result_triggered()
 {
-    if(!is_calibrated_)
+    if(!is_calibrated_ || !is_initialized_)
     {
-        QMessageBox::warning(this, tr("Error"), tr("Not calibrate yet"));
+        QMessageBox::warning(this, tr("Error"), tr("Not calibrate or initialize yet"));
         return;
     }
 
@@ -520,18 +547,16 @@ void MainWindow::on_actionSave_Result_triggered()
                  + "calibration_" + QDateTime::currentDateTime().toString("yyyy-M-d-h-m-s")
                  +".json";
     std::ofstream f(fp.toStdString());
-    if(!f.good())
-    {
-        QMessageBox::warning(this, tr("Error"), tr("Fail to open file ")+fp);
-        return;
-    }
+	if (!f.good()) {
+		QMessageBox::warning(this, tr("Error"), tr("Fail to open file ") + fp);
+		return;
+	}
 
     const Eigen::Matrix4d& tf = calibrator_->GetTransformation();
     nlohmann::json js;
-    for(uint8_t i=0; i<4; i++)
-    {
-        js["T"].push_back({tf(i,0), tf(i,1), tf(i,2), tf(i,3)});
-    }
+	for (uint8_t i = 0; i < 4; ++i) {
+		js["T"].push_back({ tf(i,0), tf(i,1), tf(i,2), tf(i,3) });
+	}
     js["K"] = js_["cam"]["K"];
     js["D"] = js_["cam"]["D"];
 
@@ -598,7 +623,6 @@ void MainWindow::updateWithTransformation(Eigen::Matrix4d tf)
         p.rgba = 0xffffffff;
     }
 
-//    calibrator_->SetTranformation(tf_);
     calibrator_->SetTranformation(tf);
     calibrator_->Project(*pcc, *img_mark);
 
@@ -638,7 +662,6 @@ void MainWindow::showTFWindow()
     tfwindow_.reset(new TFwindow(calibrator_->GetTransformation()));
     connect(tfwindow_.get(), &TFwindow::newTransformation, this, &MainWindow::updateWithTransformation);
     connect(tfwindow_.get(), &TFwindow::tfwindowClose, this, &MainWindow::tfwindowClose);
-
 
     calibrator_->Project(*pcc, *img_mark);
     img_viewer_->showImage(img_mark);
