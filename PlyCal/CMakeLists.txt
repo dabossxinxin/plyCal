@@ -14,8 +14,11 @@ include_directories(${GFLAGS_INCLUDE_DIRS})
 include_directories(${GLOG_INCLUDE_DIRS})
 include_directories(${CERES_INCLUDE_DIRS})
 
+link_directories(${PROJECT_SOURCE_DIR}/thirdParty/pnpsolver/lib)
+
 add_library(${LIB_NAME} ${LIB_SOURCE} ${LIB_HEADER} ${EDLINE_SRC})
 
+target_link_libraries(${LIB_NAME} debug pnpsolver optimized pnpsolver)
 target_link_libraries(${LIB_NAME} debug ${GLOG_LIBRARIES} optimized ${GLOG_LIBRARIES})
 target_link_libraries(${LIB_NAME} debug ${CERES_DEBUG_LIB} optimized ${CERES_RELEASE_LIB})
 target_link_libraries(${LIB_NAME} debug ${OpenCV4_DEBUG_LIB} optimized ${OpenCV4_RELEASE_LIB})
