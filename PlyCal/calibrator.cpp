@@ -17,6 +17,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <numeric>
 
 #include <pcl/registration/icp.h>
 #include <pcl/common/common.h>
@@ -216,6 +217,7 @@ Calibrator::Calibrator(const nlohmann::json& js):
 	T_.row(3) << 0,0,0,1;
 
 	is_valid_ = true;
+	tf_status_ = false;
 }
 
 uint32_t Calibrator::Add(const cv::Mat& img, const PCI& pc,
@@ -333,6 +335,53 @@ bool Calibrator::Compute(Eigen::Matrix4d &tf)
 	return true;
 }
 
+bool Calibrator::InitializeV1(Eigen::Matrix4d& tf) 
+{
+	if (polygons_.size() == 0) {
+		return false;
+	}
+
+	std::vector<Eigen::Vector2d> points2D;
+	std::vector<Eigen::Vector3d> points3D;
+
+	double fx = K_(0, 0);
+	double fy = K_(1, 1);
+	double cx = K_(0, 2);
+	double cy = K_(1, 2);
+
+	for (auto ply : polygons_) {
+		for (uint32_t id = 0; id < size_; ++id) {
+			points2D.push_back(Eigen::Vector2d((ply.img->vertexs(0, ply.ids[id]) - cx) / fx,
+				(ply.img->vertexs(1, ply.ids[id] - cy) / fy)));
+			points3D.push_back(ply.pc->vertexs[id]);
+		}
+	}
+
+	while (points2D.size() > 3) points2D.pop_back();
+	while (points3D.size() > 3) points3D.pop_back();
+
+	colmap::P3PEstimator p3p;
+	std::vector<Eigen::Matrix3x4d> tfs = p3p.Estimate(points2D, points3D);
+
+	int tf_id = -1;
+	double residual_min = FLT_MAX;
+	for (int id = 0; id < tfs.size(); ++id) {
+		std::vector<double> residuals;
+		p3p.Residuals(points2D, points3D, tfs[id], &residuals);
+		double residual = accumulate(residuals.begin(), residuals.end(), 0);
+		if (residual < residual_min) {
+			residual_min = residual;
+			tf_id = id;
+		}
+	}
+
+	T_.block(0, 0, 3, 4) = tfs[tf_id];
+	tf_status_ = true;
+	reproject_error_ = ComputeReprojError(polygons_v_, T_);
+
+	return true;
+}
+
 bool Calibrator::Initialize(Eigen::Matrix4d& tf)
 {
 	if (polygons_.size() == 0) {
@@ -370,6 +419,8 @@ bool Calibrator::Initialize(Eigen::Matrix4d& tf)
 	reproject_error_ = ComputeReprojError(polygons_v_, tf);
 
 	T_ = tf;
+	tf_status_ = true;
+
 	return true;
 }
 
@@ -430,6 +481,7 @@ void  Calibrator::Optimize(Eigen::Matrix4d& tf)
 	tf.topLeftCorner(3,3) = q.matrix();
 	tf.topRightCorner(3,1) = p;
 
+	tf_status_ = true;
 	reproject_error_ = ComputeReprojError(polygons_v_, tf);
 
 	std::cout << "T: \n" << tf << std::endl;
@@ -618,8 +670,7 @@ bool Calibrator::Project(pcl::PointCloud<pcl::PointXYZRGB>& pc, cv::Mat& img,
 	const double depth_min = 1.0;
 	const double depth_gap = 10.0;
 
-	if(img_width_ != img.cols || img_height_ != img.rows)
-	{
+	if(img_width_ != img.cols || img_height_ != img.rows) {
 		img_width_ = img.cols;
 		img_height_ = img.rows;
 	}
@@ -643,8 +694,8 @@ bool Calibrator::Project(pcl::PointCloud<pcl::PointXYZRGB>& pc, cv::Mat& img,
 		if(pt(2) < 0.5) {
 			continue;
 		}
-		int32_t u = static_cast<int32_t>(pt(0)/pt(2));
-		int32_t v = static_cast<int32_t>(pt(1)/pt(2));
+		int32_t u = static_cast<int32_t>(pt(0) / pt(2));
+		int32_t v = static_cast<int32_t>(pt(1) / pt(2));
 
 		if(u < 0 || u >= img.cols || v<0 || v >= img.rows) {
 			continue;

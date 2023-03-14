@@ -29,7 +29,7 @@ MainWindow::MainWindow(QWidget *parent) :
 	// 打开config文件
     config_path_ = QFileDialog::getOpenFileName(this,
                    tr("Open File"),
-                   ".",
+				   tr("../../data"),
                    tr("Config JSON Files(*.json)"));
 
     if(config_path_.isEmpty()) {
@@ -172,7 +172,7 @@ void MainWindow::on_actionSet_D_triggered()
 void MainWindow::on_actionOpen_Dataset_triggered()
 {
     QString dir = QFileDialog::getExistingDirectory(this, tr("Open Directory"),
-                  QDir::homePath(),
+                  tr("../../data"),
                   QFileDialog::ShowDirsOnly);
     if(!dir.isEmpty())
     {
@@ -516,8 +516,8 @@ void MainWindow::showCalibrateResult()
 {
     auto& sd = sensor_data_[sid_];
 
-	// 图像点云相互投影
-	if (sd.img_proj == nullptr || sd.pc_proj == nullptr) {
+	// 若变换矩阵发生改变则重新计算图像点云映射
+	if (calibrator_->GetTfStatus()) {
 		sd.img_proj.reset(new cv::Mat);
 		sd.img->copyTo(*sd.img_proj);
 		sd.pc_proj.reset(new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -526,6 +526,7 @@ void MainWindow::showCalibrateResult()
 			p.rgba = 0xffffffff;
 		}
 		calibrator_->Project(*sd.pc_proj, *sd.img_proj);
+		calibrator_->ResetTfStatus();
 	}
 
 	// 更新图像点云视口
@@ -537,8 +538,7 @@ void MainWindow::showCalibrateResult()
 
 void MainWindow::on_actionSave_Result_triggered()
 {
-    if(!is_calibrated_ || !is_initialized_)
-    {
+    if(!is_calibrated_ || !is_initialized_) {
         QMessageBox::warning(this, tr("Error"), tr("Not calibrate or initialize yet"));
         return;
     }

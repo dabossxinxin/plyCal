@@ -69,9 +69,10 @@ public:
         return Compute(T_);
     }
 
+	bool InitializeV1(Eigen::Matrix4d& tf);
 	bool Initialize(Eigen::Matrix4d& tf);
 	bool Initialize() {
-		return Initialize(T_);
+		return InitializeV1(T_);
 	}
 
 	int GetIterations() {
@@ -86,7 +87,15 @@ public:
 		return reproject_error_;
 	}
 
-    // 判断当前id图像数据不为控
+	bool GetTfStatus() {
+		return tf_status_;
+	}
+
+	void ResetTfStatus() {
+		tf_status_ = false;
+	}
+
+    // 判断当前id图像数据不为空
     bool ImageGood(uint32_t id)
     {
         if(id >= polygons_v_.size())
@@ -159,6 +168,7 @@ private:
 		}
 	};
 
+	bool			tf_status_;				// tf矩阵是否发生改变
 	double			reproject_error_;		// 重投影误差；
 	double			track_error_threshold_;
 	bool			is_valid_;				// 输入点云和图像数据是否有效

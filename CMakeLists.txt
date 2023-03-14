@@ -16,11 +16,6 @@ set(LIB_NAME plycal)
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 set(EDLINE_SRC ${PROJECT_SOURCE_DIR}/thirdParty/edlines/EDLineDetector.cpp)
 
-#set the output directory for the build executables and libraries
-#set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
-#set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
-#set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
-
 include(FindEigen3)
 include(FindVTK)
 include(FindQt)
