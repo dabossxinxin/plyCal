@@ -25,6 +25,8 @@
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
 
+#include "estimators/absolute_pose.h"
+
 using namespace lqh;
 
 using PCC = pcl::PointCloud<pcl::PointXYZRGB>;

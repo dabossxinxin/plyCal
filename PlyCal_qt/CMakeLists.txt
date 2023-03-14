@@ -12,6 +12,8 @@ qt5_wrap_ui(UI_Wraps ${UI_Files})
 
 include_directories(${VTK_INCLUDE_DIRS})
 
+link_directories(${PROJECT_SOURCE_DIR}/thirdParty/pnpsolver/lib)
+
 # 分别存放.cpp、.h、.ui以及由ui文件生成的.h文件
 source_group("Source" FILES ${UI_Source})
 source_group("Header" FILES ${UI_Header})

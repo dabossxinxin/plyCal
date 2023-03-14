@@ -46,8 +46,9 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 include_directories(${GFLAGS_INCLUDE_DIRS})
 include_directories(${GLOG_INCLUDE_DIRS})
 include_directories(${CERES_INCLUDE_DIRS})
-include_directories(${PROJECT_SOURCE_DIR}/thirdParty)
 include_directories(${PROJECT_SOURCE_DIR}/PlyCal)
+include_directories(${PROJECT_SOURCE_DIR}/thirdParty)
+include_directories(${PROJECT_SOURCE_DIR}/thirdParty/pnpsolver/src)
 
 add_subdirectory(PlyCal)
 
