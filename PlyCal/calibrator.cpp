@@ -357,17 +357,17 @@ bool Calibrator::InitializeV1(Eigen::Matrix4d& tf)
 		}
 	}
 
-	while (points2D.size() > 3) points2D.pop_back();
-	while (points3D.size() > 3) points3D.pop_back();
+	//while (points2D.size() > 3) points2D.pop_back();
+	//while (points3D.size() > 3) points3D.pop_back();
 
-	colmap::P3PEstimator p3p;
-	std::vector<Eigen::Matrix3x4d> tfs = p3p.Estimate(points2D, points3D);
+	colmap::EPNPEstimator epnp;
+	std::vector<Eigen::Matrix3x4d> tfs = epnp.Estimate(points2D, points3D);
 
 	int tf_id = -1;
 	double residual_min = FLT_MAX;
 	for (int id = 0; id < tfs.size(); ++id) {
 		std::vector<double> residuals;
-		p3p.Residuals(points2D, points3D, tfs[id], &residuals);
+		epnp.Residuals(points2D, points3D, tfs[id], &residuals);
 		double residual = accumulate(residuals.begin(), residuals.end(), 0);
 		if (residual < residual_min) {
 			residual_min = residual;
@@ -440,21 +440,17 @@ void  Calibrator::Optimize(Eigen::Matrix4d& tf)
 	ceres::LocalParameterization* quaternion_local_parameterization =
 		new ceres::EigenQuaternionParameterization;
 
-	for(const auto& ply : polygons_)
-	{
+	for(const auto& ply : polygons_){
 		// add edge
-		for(uint32_t i=0; i<size_; ++i)
-		{
-			if(ply.pc->edges[i].points.cols() == 0)
-			{
+		for(uint32_t i=0; i<size_; ++i) {
+			if(ply.pc->edges[i].points.cols() == 0) {
 				continue;
 			}
 			ceres::CostFunction* cost =
-				new ceres::AutoDiffCostFunction<Edge2EdgeError, 1,4,3>(
-				new Edge2EdgeError( K_, ply.pc->edges[i].points, ply.img->edges[ply.ids[i]].coef ));
+				new ceres::AutoDiffCostFunction<Edge2EdgeError, 1, 4, 3>(
+					new Edge2EdgeError(K_, ply.pc->edges[i].points, ply.img->edges[ply.ids[i]].coef));
 
-			problem.AddResidualBlock(cost, loss_function_edge,
-									 q.coeffs().data(), p.data() );
+			problem.AddResidualBlock(cost, loss_function_edge, q.coeffs().data(), p.data());
 		}
 		// add inlier points
 		/*ceres::CostFunction* cost = new ceres::AutoDiffCostFunction<Point2PolygonError,1,4,3>(

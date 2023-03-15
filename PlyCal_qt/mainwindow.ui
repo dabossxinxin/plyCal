@@ -101,7 +101,7 @@ QPushButton:default {
         </property>
         <property name="styleSheet">
          <string notr="true">QLabel{
-color: rgb(239, 41, 41);
+color: rgb(115, 210, 22);
 	background-color: #ccc;
 }</string>
         </property>
@@ -296,7 +296,7 @@ color: rgb(239, 41, 41);
         </property>
         <property name="styleSheet">
          <string notr="true">QLabel{
-color: rgb(239, 41, 41);
+color: rgb(115, 210, 22);
 	background-color: #ccc;
 }</string>
         </property>
